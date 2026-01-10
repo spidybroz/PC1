@@ -13,6 +13,7 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import json
 import os
+import io
 from fake_useragent import UserAgent
 from urllib.parse import urlparse
 
