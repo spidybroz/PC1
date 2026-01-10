@@ -14,7 +14,11 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set UTF-8 encoding
-      run: chcp 65001
+      shell: pwsh
+      run: |
+        chcp 65001
+        $OutputEncoding = [console]::InputEncoding = [console]::OutputEncoding = New-Object System.Text.UTF8Encoding
+        [System.Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
     - name: Set up Python 3.11
       uses: actions/setup-python@v5
@@ -22,6 +26,7 @@ jobs:
         python-version: "3.11"
 
     - name: Verify Python installation
+      shell: pwsh
       run: |
         python --version
         pip --version
@@ -44,6 +49,7 @@ jobs:
         Write-Host "Project structure verified."
 
     - name: Install Python dependencies
+      shell: pwsh
       run: |
         python -m pip install --upgrade pip
         pip install -r source/requirements.txt
@@ -58,10 +64,17 @@ jobs:
         Get-Content customize/spend_time.txt
 
     - name: Create Logs directory
+      shell: pwsh
       run: mkdir Logs -Force
 
     - name: Run SEO Bot
+      shell: pwsh
       run: |
+        # Force UTF-8 encoding for PowerShell
+        $OutputEncoding = [console]::InputEncoding = [console]::OutputEncoding = New-Object System.Text.UTF8Encoding
+        [System.Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        
+        # Run the bot
         python source/SC_BOT.py
 
     - name: Upload Logs
