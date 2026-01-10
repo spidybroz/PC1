@@ -16,13 +16,6 @@ import os
 from fake_useragent import UserAgent
 from urllib.parse import urlparse
 
-# Force UTF-8 encoding for Windows
-if sys.platform == "win32":
-    if hasattr(sys.stdout, 'buffer'):
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    if hasattr(sys.stderr, 'buffer'):
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
-
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOGS_DIR = os.path.join(PROJECT_ROOT, 'Logs')
 CUSTOMIZE_DIR = os.path.join(PROJECT_ROOT, 'Customize')
