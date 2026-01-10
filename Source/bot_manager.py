@@ -1,3 +1,4 @@
+import sys
 import time
 import random
 import logging
@@ -7,6 +8,13 @@ import concurrent.futures
 from threading import Semaphore
 import re
 from SC_BOT import HumanLikeTrafficBot
+
+# Force UTF-8 encoding for Windows
+if sys.platform == "win32":
+    if hasattr(sys.stdout, 'buffer'):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    if hasattr(sys.stderr, 'buffer'):
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 class BotManager:
     def __init__(self):
@@ -25,14 +33,14 @@ class BotManager:
             count_file = os.path.join(self.CUSTOMIZE_DIR, "bot_count.txt")
             
             if not os.path.exists(count_file):
-                print(f"❌ bot_count.txt not found. Please create the file with bot count.")
+                print(f"[ERROR] bot_count.txt is empty. Please add a number.")
                 return self.max_bots  # Use minimal fallback
             
             with open(count_file, 'r') as f:
                 content = f.read().strip()
                 
             if not content:
-                print(f"❌ bot_count.txt is empty. Please add a number.")
+                print(f"[ERROR] bot_count.txt is empty. Please add a number.")
                 return self.max_bots  # Use minimal fallback
             
             bot_count = int(content)
@@ -43,21 +51,21 @@ class BotManager:
 
             # Show warnings for large numbers but allow them
             if bot_count > 1000:
-                print(f"🚨 EXTREME WARNING: Running {bot_count} bots!")
-                print(f"💥 This will use ~{bot_count * 200}MB RAM and significant CPU!")
-                print(f"🔥 Only proceed if you have a powerful system!")
+                print(f"[WARNING] EXTREME WARNING: Running {bot_count} bots!")
+                print(f"[RAM] This will use ~{bot_count * 200}MB RAM and significant CPU!")
+                print(f"[FIRE] Only proceed if you have a powerful system!")
                 input("Press Enter to continue or Ctrl+C to cancel...")
             elif bot_count > 500:
-                print(f"⚠️  HIGH LOAD: Running {bot_count} bots")
-                print(f"💾 Expected RAM usage: ~{bot_count * 200}MB")
+                print(f"[WARNING] HIGH LOAD: Running {bot_count} bots")
+                print(f"[MEMORY] Expected RAM usage: ~{bot_count * 200}MB")
             elif bot_count > 100:
-                print(f"📈 Large scale: {bot_count} bots")
+                print(f"[CHART] Large scale: {bot_count} bots")
                 
-            print(f"🎯 Configured bot count: {bot_count}")
+            print(f"[TARGET] Configured bot count: {bot_count}")
             return bot_count
             
         except Exception as e:
-            print(f"❌ Error reading bot_count.txt: {str(e)}")
+            print(f"[ERROR] Error reading bot_count.txt: {str(e)}")
             return self.max_bots  # Use minimal fallback
     
     # ... rest of the methods remain the same ...
@@ -96,7 +104,7 @@ class BotManager:
             
             # Only log startup for first 50 bots to avoid console spam
             if bot_id <= 50:
-                bot_logger.info(f"🚀 Bot {bot_id} STARTING with {len(urls)} URLs")
+                bot_logger.info(f"[ROCKET] Bot {bot_id} STARTING with {len(urls)} URLs")
             
             # Create bot instance with optimized settings
             bot = HumanLikeTrafficBot(urls, headless=True)
@@ -113,7 +121,7 @@ class BotManager:
                 json.dump(session_log, f, indent=2)
             
             if bot_id <= 50:
-                bot_logger.info(f"✅ Bot {bot_id} COMPLETED successfully")
+                bot_logger.info(f"[OK] Bot {bot_id} COMPLETED successfully")
             return session_log
             
         except Exception as e:
@@ -125,7 +133,7 @@ class BotManager:
                 emergency_logger.addHandler(emergency_handler)
                 emergency_logger.setLevel(logging.ERROR)
             
-            emergency_logger.error(f"❌ Bot {bot_id} FAILED: {str(e)}")
+            emergency_logger.error(f"[ERROR] Bot {bot_id} FAILED: {str(e)}")
             return {'bot_id': bot_id, 'status': 'failed', 'error': str(e)}
         finally:
             if 'bot' in locals():
@@ -135,10 +143,11 @@ class BotManager:
         """Run multiple bots with intelligent resource management"""
         bot_count = self.read_bot_count()
         
-        print(f"\n🚀 STARTING {bot_count} BOT INSTANCES SIMULTANEOUSLY...")
-        print(f"📊 URLs per bot: {len(urls)}")
-        print(f"⏱️ Duration per URL: {stay_duration} seconds")
-        print(f"💾 Logs directory: {self.LOGS_DIR}")
+        print(f"\n[ROCKET] STARTING {bot_count} BOT INSTANCES SIMULTANEOUSLY...")
+        print(f"[CHART] URLs per bot: {len(urls)}")
+        print(f"[CLOCK] Duration per URL: {stay_duration} seconds")
+        print(f"[FOLDER] Logs directory: {self.LOGS_DIR}")
+        print("="*60)
         
         # Intelligent concurrency based on bot count
         if bot_count <= 50:
@@ -148,7 +157,7 @@ class BotManager:
         else:
             max_concurrent = 80  # High but manageable for large scale
         
-        print(f"⚡ Max concurrent bots: {max_concurrent}")
+        print(f"[LIGHTNING] Max concurrent bots: {max_concurrent}")
         print("="*60)
         
         semaphore = Semaphore(max_concurrent)
@@ -165,10 +174,10 @@ class BotManager:
                 for bot_id in range(1, bot_count + 1)
             }
             
-            print(f"🎯 All {bot_count} bots submitted for execution!")
-            print("📈 Bots are now running in parallel...")
+            print(f"[TARGET] All {bot_count} bots submitted for execution!")
+            print("[CHART] Bots are now running in parallel...")
             if bot_count > 50:
-                print("🔇 Console output limited to first 50 bots to reduce spam")
+                print("[MUTE] Console output limited to first 50 bots to reduce spam")
             
             # Collect results as they complete
             completed_count = 0
@@ -189,13 +198,14 @@ class BotManager:
                     
                     # Show progress for large numbers
                     if bot_count > 50 and completed_count % 10 == 0:
-                        print(f"📊 Progress: {completed_count}/{bot_count} (✅{successful_bots} ❌{failed_bots})")
+                        print(f"[CHART] Progress: {completed_count}/{bot_count} ([OK]{successful_bots} [ERROR]{failed_bots})")
                     elif bot_count <= 50:
-                        print(f"✅ Bot {bot_id} finished ({completed_count}/{bot_count})")
+                        print(f"[OK] Bot {bot_id} finished ({completed_count}/{bot_count})")
+
                         
                 except Exception as e:
                     failed_bots += 1
-                    print(f"❌ Bot {bot_id} generated exception: {e}")
+                    print(f"[ERROR] Bot {bot_id} generated exception: {e}")
                     self.session_logs.append({'bot_id': bot_id, 'status': 'exception', 'error': str(e)})
         
         return self.session_logs
