@@ -1,3 +1,4 @@
+import sys
 import time
 import re
 import random
@@ -14,6 +15,11 @@ import json
 import os
 from fake_useragent import UserAgent
 from urllib.parse import urlparse
+
+# Set UTF-8 encoding for stdout/stderr
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOGS_DIR = os.path.join(PROJECT_ROOT, 'Logs')
@@ -677,7 +683,8 @@ def main():
             
             # Use the file that exists
             actual_bot_count_file = bot_count_file if os.path.exists(bot_count_file) else bot_count_file_no_ext
-            print(f"🎯 Multi-bot mode detected! Using: {actual_bot_count_file}")
+            # Line 680 - Remove Unicode arrow and use ASCII
+            print(f"[TARGET] Multi-bot mode detected! Using: {actual_bot_count_file}")
             
             bot_manager = BotManager()
             all_session_logs = bot_manager.run_distributed_bots(urls, stay_duration)
