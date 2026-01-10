@@ -4,6 +4,7 @@ import random
 import logging
 import json
 import os
+import io
 import concurrent.futures
 from threading import Semaphore
 import re
