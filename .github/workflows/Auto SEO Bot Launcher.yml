@@ -1,0 +1,87 @@
+name: Auto SEO Bot Launcher
+
+on:
+  workflow_dispatch:   # Manual run button in GitHub
+  push:
+    branches: [ "main" ]
+
+  schedule:
+    - cron: "*/30 * * * *"   # Runs every 30 minutes
+
+jobs:
+  run-seo-bot:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set UTF-8 encoding
+      shell: pwsh
+      run: |
+        chcp 65001
+        $OutputEncoding = [console]::InputEncoding = [console]::OutputEncoding = New-Object System.Text.UTF8Encoding
+        [System.Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Verify Python installation
+      shell: pwsh
+      run: |
+        python --version
+        pip --version
+
+    - name: Verify project structure
+      shell: pwsh
+      run: |
+        $projectRoot = Get-Location
+
+        $requirements = "$projectRoot/source/requirements.txt"
+        $botScript   = "$projectRoot/source/SC_BOT.py"
+        $customize   = "$projectRoot/customize"
+
+        if (!(Test-Path $requirements)) { throw "requirements.txt not found" }
+        if (!(Test-Path $botScript)) { throw "SC_BOT.py not found" }
+        if (!(Test-Path $customize)) { throw "customize folder not found" }
+        if (!(Test-Path "$customize/urls.txt")) { throw "urls.txt not found" }
+        if (!(Test-Path "$customize/spend_time.txt")) { throw "spend_time.txt not found" }
+
+        Write-Host "Project structure verified."
+
+    - name: Install Python dependencies
+      shell: pwsh
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r source/requirements.txt
+
+    - name: Display configuration summary
+      shell: pwsh
+      run: |
+        Write-Host "URLs found:"
+        Get-Content customize/urls.txt
+
+        Write-Host "`nVisit duration:"
+        Get-Content customize/spend_time.txt
+
+    - name: Create Logs directory
+      shell: pwsh
+      run: mkdir Logs -Force
+
+    - name: Run SEO Bot
+      shell: pwsh
+      run: |
+        $env:PYTHONUTF8 = "1"
+        $env:PYTHONIOENCODING = "utf-8"
+        $OutputEncoding = [console]::InputEncoding = [console]::OutputEncoding = New-Object System.Text.UTF8Encoding
+        [System.Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        python source/SC_BOT.py
+
+    - name: Upload Logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: seo-bot-logs
+        path: Logs
