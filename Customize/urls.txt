@@ -1,1 +1,4 @@
 https://maizan.me/
+https://devtunnel-cli.mzieos.com/
+https://www.npmjs.com/package/devtunnel-cli
+https://github.com/maiz-an/DevTunnel-CLI
