@@ -22,18 +22,36 @@ LOGS_DIR = os.path.join(PROJECT_ROOT, 'Logs')
 CUSTOMIZE_DIR = os.path.join(PROJECT_ROOT, 'Customize')
 
 class HumanLikeTrafficBot:
-    def __init__(self, urls, headless=False):
+    def __init__(self, urls, headless=False, proxy=None, step_log_path=None):
         self.urls = urls
         self.headless = headless
+        self.proxy = proxy  # e.g. http://user:pass@host:port or socks5://host:port (different IP/location per bot)
         self.driver = None
         self.current_user_agent = None
+        self.bot_ip = None
+        self.bot_country = None
         self.stay_duration = self.read_stay_duration()
-        
+        self.step_log_path = step_log_path
+        self._step_counter = 0
+
         # Create logs directory if it doesn't exist
         os.makedirs(LOGS_DIR, exist_ok=True)
-        
+
         self.setup_logging()
         self.setup_driver()
+
+    def _step_log(self, what_happened):
+        """Append one step line: Step N | Time | What happened (user-friendly summary log)."""
+        if not self.step_log_path:
+            return
+        self._step_counter += 1
+        ts = time.strftime("%H:%M:%S", time.localtime())
+        line = "%s\t%s\t%s\n" % (self._step_counter, ts, what_happened)
+        try:
+            with open(self.step_log_path, 'a', encoding='utf-8') as f:
+                f.write(line)
+        except Exception:
+            pass
         
     def read_stay_duration(self):
         """Read stay duration from spend_time.txt file and validate it"""
@@ -192,28 +210,36 @@ class HumanLikeTrafficBot:
         return plan
     
     def setup_logging(self):
-        """Setup comprehensive logging with real-time output"""
+        """Setup comprehensive logging — table-style file, real-time console."""
         log_file = os.path.join(LOGS_DIR, 'SC_BOT.log')
-        
-        # Clear previous log file to start fresh
-        with open(log_file, 'w') as f:
-            f.write("")
+        try:
+            with open(log_file, 'w', encoding='utf-8') as f:
+                f.write("TIMESTAMP             | LEVEL   | MESSAGE\n")
+                f.write("----------------------+---------+--------------------------------------------------\n")
+        except Exception:
+            pass
         
         logging.basicConfig(
             level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
+            format='%(asctime)-22s | %(levelname)-7s | %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S',
             handlers=[
-                logging.FileHandler(log_file),
-                logging.StreamHandler()  # This ensures real-time console output
+                logging.FileHandler(log_file, mode='a', encoding='utf-8'),
+                logging.StreamHandler()
             ]
         )
         self.logger = logging.getLogger(__name__)
         
     def setup_driver(self):
-        """Setup Chrome driver with human-like configurations"""
+        """Setup Chrome driver with human-like configurations; optional proxy for different IP/location."""
         try:
             from selenium.webdriver.chrome.options import Options
-            
+
+            if self.proxy:
+                self._step_log("Selenium-wire starting, proxy: %s" % (self.proxy.strip().split('@')[-1] if '@' in self.proxy else self.proxy.strip()))
+            else:
+                self._step_log("Browser starting (no proxy)")
+
             options = Options()
             
             # Random user agent
@@ -221,20 +247,20 @@ class HumanLikeTrafficBot:
             self.current_user_agent = ua.random
             options.add_argument(f'--user-agent={self.current_user_agent}')
             
-            # Common browser arguments
+            # Common browser arguments + suppress Chrome stderr noise (GPU/USB etc)
             options.add_argument('--disable-blink-features=AutomationControlled')
-            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
             options.add_experimental_option('useAutomationExtension', False)
             options.add_argument('--no-sandbox')
             options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--log-level=3')
+            options.add_argument('--disable-logging')
             
-            # Disable automatic redirects
             options.add_argument('--disable-features=NetworkService')
             
-            # Headless-specific optimizations
             if self.headless:
-                options.add_argument('--headless=new')  # New headless mode
-                options.add_argument('--disable-gpu')  # GPU not needed in headless
+                options.add_argument('--headless=new')  # New headless mode (harder to detect)
+                options.add_argument('--disable-gpu')
                 options.add_argument('--disable-software-rasterizer')
                 options.add_argument('--no-first-run')
                 options.add_argument('--no-default-browser-check')
@@ -244,26 +270,106 @@ class HumanLikeTrafficBot:
                 options.add_argument('--disable-extensions')
                 options.add_argument('--disable-plugins')
                 options.add_argument('--disable-images')  # Save bandwidth
+                # Realistic viewport (sites check dimensions) – avoid "headless" viewport
+                resolutions = ['1920,1080', '1366,768', '1536,864', '1440,900', '1280,720']
+                options.add_argument('--window-size=%s' % random.choice(resolutions))
             else:
                 # Window size variations only for visible mode
                 resolutions = ['1920,1080', '1366,768', '1536,864', '1440,900']
                 options.add_argument(f'--window-size={random.choice(resolutions)}')
             
-            self.driver = webdriver.Chrome(options=options)
-            
-            # Execute CDP commands to prevent detection
+            # PROXY: require selenium-wire (use main-thread-loaded module to avoid thread import issues)
+            if self.proxy:
+                proxy_url = self.proxy.strip()
+                if not proxy_url.startswith(('http://', 'https://', 'socks4://', 'socks5://')):
+                    proxy_url = 'http://' + proxy_url
+                try:
+                    import sys as _sys
+                    _m = _sys.modules.get('seleniumwire')
+                    if _m is None:
+                        import importlib
+                        _m = importlib.import_module('seleniumwire')
+                    wire_webdriver = getattr(_m, 'webdriver')
+                except (ImportError, AttributeError) as e:
+                    self.logger.error("[PROXY] BLOCKING: selenium-wire not installed. Run: pip install selenium-wire")
+                    raise RuntimeError("Proxy required but selenium-wire missing. pip install selenium-wire") from e
+                last_err = None
+                for attempt in range(1, 4):
+                    try:
+                        seleniumwire_options = {
+                            'proxy': {
+                                'http': proxy_url,
+                                'https': proxy_url,
+                                'no_proxy': 'localhost,127.0.0.1'
+                            },
+                            'connection_timeout': 25,
+                            'verify_ssl': False
+                        }
+                        self.driver = wire_webdriver.Chrome(options=options, seleniumwire_options=seleniumwire_options)
+                        ok_msg = proxy_url.split('@')[-1] if '@' in proxy_url else proxy_url
+                        self.logger.info("[PROXY] OK -> %s", ok_msg)
+                        self._step_log("Proxy OK -> %s" % ok_msg)
+                        break
+                    except Exception as e:
+                        last_err = e
+                        self.logger.warning("[PROXY] FAIL attempt %s/3 -> %s", attempt, str(e)[:80])
+                        if attempt < 3:
+                            time.sleep(2 * attempt)
+                else:
+                    self.logger.error("[PROXY] DEAD after 3 attempts")
+                    raise last_err
+            else:
+                self.driver = webdriver.Chrome(options=options)
+            # Anti-detection: CDP + JS so bots are less likely to be blocked
             self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {
-                "userAgent": self.current_user_agent
+                "userAgent": self.current_user_agent,
+                "acceptLanguage": "en-US,en;q=0.9"
             })
-            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            
-            self.logger.info(f"Driver initialized with user agent: {self.current_user_agent}")
-            self.logger.info(f"Total stay duration per URL: {self.stay_duration} seconds")
-            self.logger.info(f"Running in {'HEADLESS' if self.headless else 'VISIBLE'} mode")
+            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
+            # Mask automation signals (reduce chance of security/anti-bot blocking)
+            try:
+                self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+                    'source': """
+                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined, configurable: true });
+                    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'], configurable: true });
+                    if (!window.chrome) window.chrome = { runtime: {} };
+                    """
+                })
+            except Exception:
+                pass
+
+            self.logger.info("Browser ready. Stay time per page: %s seconds (no GUI, console only).", self.stay_duration)
+            self._step_log("Browser ready. Stay time per page: %s s (no GUI)." % self.stay_duration)
             
         except Exception as e:
-            self.logger.error(f"Failed to setup driver: {str(e)}")
+            self.logger.error("Browser setup failed: %s", str(e))
             raise
+    
+    def detect_and_log_ip_country(self):
+        """Detect this bot's public IP and country (through proxy if any). Log to bot file for user."""
+        if not self.driver:
+            return
+        try:
+            self.driver.get("https://ipinfo.io/json")
+            time.sleep(1.5)
+            body = self.driver.find_element(By.TAG_NAME, "body").text
+            data = json.loads(body)
+            self.bot_ip = data.get("ip", "unknown")
+            self.bot_country = data.get("country", data.get("region", "unknown"))
+            try:
+                from theme import format_ip_country
+                line = format_ip_country(self.bot_ip, self.bot_country)
+            except ImportError:
+                line = "IP: %s  |  Country: %s" % (self.bot_ip, self.bot_country)
+            self.logger.info("=== This bot is using: IP %s | Country: %s ===", self.bot_ip, self.bot_country)
+            self.logger.info("(Your site analytics will show this IP and country as a visitor)")
+            self._step_log("IP/country: %s | %s" % (self.bot_ip, self.bot_country))
+        except Exception as e:
+            self.bot_ip = "unknown"
+            self.bot_country = "unknown"
+            self.logger.warning("Could not detect IP/country: %s", str(e))
+            err_short = str(e).split('\n')[0][:60]
+            self._step_log("Could not detect IP/country: %s" % err_short)
     
     def human_delay(self, min_seconds=2, max_seconds=8):
         """Random delay to mimic human thinking time"""
@@ -274,7 +380,7 @@ class HumanLikeTrafficBot:
     def random_mouse_movements(self):
         """Simulate random mouse movements"""
         try:
-            self.logger.info("Performing random mouse movements")
+            self.logger.info("Moving mouse around the page (like a real user)")
             
             # Reduced movements in headless mode to save CPU
             movement_count = random.randint(2, 5) if self.headless else random.randint(3, 8)
@@ -294,15 +400,15 @@ class HumanLikeTrafficBot:
             actions.move_by_offset(-x_offset, -y_offset)
             actions.perform()
             
-            self.logger.info("Completed mouse movements")
+            self.logger.info("Done moving mouse.")
             
         except Exception as e:
-            self.logger.debug(f"Mouse movement interrupted: {str(e)}")
+            self.logger.debug("Mouse movement interrupted: %s", str(e))
     
     def scroll_behavior(self):
         """Simulate natural scrolling behavior"""
         try:
-            self.logger.info("Performing scrolling behavior")
+            self.logger.info("Scrolling the page up and down")
             scroll_actions = [
                 (0, random.randint(300, 800)),  # Initial scroll
                 (random.randint(-200, 200), random.randint(200, 500)),  # Random scroll
@@ -315,15 +421,15 @@ class HumanLikeTrafficBot:
                 self.logger.debug(f"Scroll {i+1}: x={x_scroll}, y={y_scroll}")
                 self.human_delay(1, 3)
                 
-            self.logger.info("Completed scrolling")
+            self.logger.info("Done scrolling.")
                 
         except Exception as e:
-            self.logger.debug(f"Scrolling interrupted: {str(e)}")
+            self.logger.debug("Scrolling interrupted: %s", str(e))
     
     def click_random_elements(self):
         """Click on random interactive elements"""
         try:
-            self.logger.info("Looking for clickable elements...")
+            self.logger.info("Looking for links and buttons to click...")
             
             # Find all clickable elements
             clickable_selectors = [
@@ -343,40 +449,30 @@ class HumanLikeTrafficBot:
                 if elem.is_displayed() and elem.is_enabled()
             ]
             
-            self.logger.info(f"Found {len(clickable_elements)} clickable elements")
+            self.logger.info("Found %s links or buttons.", len(clickable_elements))
             
             if clickable_elements:
-                # Click 1-3 random elements
                 click_count = random.randint(1, min(3, len(clickable_elements)))
-                self.logger.info(f"Attempting to click {click_count} elements")
+                self.logger.info("Clicking %s of them (like a real visitor).", click_count)
                 
                 for i in range(click_count):
                     element = random.choice(clickable_elements)
                     try:
-                        # Remove the element from list to avoid clicking same element twice
                         clickable_elements.remove(element)
-                        
-                        self.logger.info(f"Preparing to click element {i+1}: {element.tag_name}")
                         self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", element)
                         self.human_delay(1, 3)
-                        
-                        # Get element text for logging
-                        element_text = element.text[:50] + "..." if len(element.text) > 50 else element.text
-                        self.logger.info(f"Clicking element: {element.tag_name} with text: '{element_text}'")
-                        
+                        element_text = (element.text[:50] + "...") if len(element.text) > 50 else element.text
+                        self.logger.info("Clicked: %s", element_text or "(link/button)")
                         element.click()
-                        self.logger.info(f"Successfully clicked element {i+1}")
                         self.human_delay(2, 5)
-                        
                     except Exception as e:
-                        self.logger.warning(f"Could not click element: {str(e)}")
+                        self.logger.warning("Could not click one element (page may have changed).")
                         continue
-                        
             else:
-                self.logger.info("No clickable elements found on this page")
+                self.logger.info("No links or buttons found on this page.")
                         
         except Exception as e:
-            self.logger.error(f"Element clicking failed: {str(e)}")
+            self.logger.error("Clicking failed: %s", str(e))
     
     def detect_verification(self):
         """Detect common verification challenges"""
@@ -449,9 +545,10 @@ class HumanLikeTrafficBot:
         try:
             # Normalize the target URL
             target_url = self.normalize_url(url)
-            self.logger.info(f"Visiting: {target_url}")
-            self.logger.info(f"Scheduled stay duration: {self.stay_duration} seconds")
-            
+            self.logger.info("Opening page: %s", target_url)
+            self.logger.info("Will stay on this page for %s seconds.", self.stay_duration)
+            self._step_log("Opening page: %s" % target_url)
+
             # Navigate to the exact URL
             self.driver.get(target_url)
             
@@ -466,12 +563,13 @@ class HumanLikeTrafficBot:
             target_normalized = self.normalize_url(target_url)
             
             if current_normalized != target_normalized:
-                self.logger.warning(f"URL was redirected from {target_normalized} to {current_normalized}")
+                self.logger.warning("Page redirected to a different address. Trying original URL again.")
                 visit_log['redirected_to'] = current_normalized
+                self._step_log("Request to %s -> 307 (redirect)" % target_url)
                 
                 # Try to go back to original URL
                 try:
-                    self.logger.info("Attempting to navigate back to original URL...")
+                    self.logger.info("Going back to the original page...")
                     self.driver.get(target_url)
                     time.sleep(3)  # Wait for navigation
                     
@@ -480,24 +578,22 @@ class HumanLikeTrafficBot:
                     new_normalized = self.normalize_url(new_current)
                     
                     if new_normalized == target_normalized:
-                        self.logger.info("Successfully returned to original URL")
+                        self.logger.info("Back on the original page.")
                         visit_log['redirect_fixed'] = True
                     else:
-                        self.logger.warning(f"Still on redirected URL: {new_normalized}")
+                        self.logger.warning("Still on a different page after redirect.")
                         visit_log['redirect_fixed'] = False
                 except Exception as e:
                     self.logger.error(f"Failed to return to original URL: {str(e)}")
                     visit_log['redirect_fixed'] = False
             else:
-                self.logger.info("Successfully loaded exact target URL")
+                self.logger.info("Page loaded correctly.")
                 visit_log['redirect_fixed'] = True
-            
-            # Calculate action plan based on total duration
+                self._step_log("Page loaded correctly.")
+
             action_plan = self.calculate_action_plan(self.stay_duration)
-            
-            # Initial human delay after page load
             initial_delay = random.uniform(*action_plan['initial_load_delay'])
-            self.logger.info(f"Initial page load delay: {initial_delay:.2f}s")
+            self.logger.info("Waiting a few seconds (like a real user), then browsing...")
             time.sleep(initial_delay)
             visit_log['actions_performed'].append({
                 'action': 'initial_load_delay',
@@ -512,7 +608,7 @@ class HumanLikeTrafficBot:
             while time.time() - start_time < self.stay_duration:
                 session_count += 1
                 remaining_time = self.stay_duration - (time.time() - start_time)
-                self.logger.info(f"Starting session {session_count} - {remaining_time:.1f}s remaining")
+                self.logger.info("Browsing round %s — about %s seconds left on this page.", session_count, int(remaining_time))
                 
                 # Detect verification challenges
                 challenges = self.detect_verification()
@@ -538,15 +634,15 @@ class HumanLikeTrafficBot:
                 
                 # Shuffle sessions for more natural behavior
                 random.shuffle(sessions)
-                self.logger.info(f"Session {session_count} will perform {len(sessions)} actions")
+                self.logger.info("Doing %s actions this round (scroll, click, move mouse).", len(sessions))
                 
                 # Execute sessions
                 for session_name, session_function in sessions:
                     if time.time() - start_time >= self.stay_duration:
-                        self.logger.info("Time limit reached, stopping session")
+                        self.logger.info("Time’s up on this page. Moving on.")
                         break
                         
-                    self.logger.info(f"Executing: {session_name}")
+                    self.logger.info("Action: %s", session_name.replace('_', ' '))
                     session_function()
                     action_count += 1
                     
@@ -562,7 +658,7 @@ class HumanLikeTrafficBot:
                         self.logger.debug(f"Action delay: {action_delay:.2f}s")
                         time.sleep(action_delay)
                     else:
-                        self.logger.info("Skipping action delay due to time constraints")
+                        self.logger.info("Short on time — skipping short pause.")
                 
                 # Break between sessions
                 remaining_time = self.stay_duration - (time.time() - start_time)
@@ -571,15 +667,15 @@ class HumanLikeTrafficBot:
                         random.uniform(*action_plan['break_duration_range']),
                         remaining_time * 0.8  # Don't use all remaining time for break
                     )
-                    self.logger.info(f"Break between sessions: {break_duration:.1f}s")
+                    self.logger.info("Short pause (like a real user), then continuing.")
                     time.sleep(break_duration)
                 else:
-                    self.logger.info("No time for break between sessions")
+                    self.logger.info("No pause — almost done.")
             
             # Ensure exact time is spent
             remaining_time = self.stay_duration - (time.time() - start_time)
             if remaining_time > 0:
-                self.logger.info(f"Final delay of {remaining_time:.1f}s to complete scheduled duration")
+                self.logger.info("Finishing up (staying full time on page).")
                 time.sleep(remaining_time)
                 visit_log['actual_duration'] = self.stay_duration
             else:
@@ -589,13 +685,15 @@ class HumanLikeTrafficBot:
             visit_log['total_actions'] = action_count
             visit_log['total_sessions'] = session_count
             
-            self.logger.info(f"Completed visit to {url}. Duration: {visit_log['actual_duration']:.2f}s, Actions: {action_count}, Sessions: {session_count}")
+            self.logger.info("Done with this page. Time spent: %s sec, actions done: %s.", int(visit_log.get('actual_duration', 0)), action_count)
             
         except Exception as e:
             visit_log['status'] = 'error'
             visit_log['error'] = str(e)
-            self.logger.error(f"Error visiting {url}: {str(e)}")
-        
+            self.logger.error("Something went wrong on this page: %s", str(e))
+            err_short = str(e).split('\n')[0][:60]
+            self._step_log("Something went wrong on this page: %s" % err_short)
+
         return visit_log
     
     def run(self):
@@ -608,16 +706,15 @@ class HumanLikeTrafficBot:
             'visits': []
         }
         
-        self.logger.info(f"Starting bot session with {len(self.urls)} URLs")
-        self.logger.info(f"Each URL will be visited for {self.stay_duration} seconds")
-        
+        self.logger.info("Starting. Will visit %s page(s), %s seconds per page.", len(self.urls), self.stay_duration)
+        self._step_log("Bot started. Visiting %s page(s), %s s per page." % (len(self.urls), self.stay_duration))
+
         for i, url in enumerate(self.urls, 1):
-            self.logger.info(f"Processing URL {i}/{len(self.urls)}")
+            self.logger.info("Page %s of %s.", i, len(self.urls))
             
-            # Random delay between URL visits (1-5 minutes)
             if i > 1:
                 between_visit_delay = random.uniform(60, 300)
-                self.logger.info(f"Waiting {between_visit_delay:.2f}s before next visit")
+                self.logger.info("Waiting a bit before next page (like a real user).")
                 time.sleep(between_visit_delay)
             
             visit_log = self.visit_url(url)
@@ -635,7 +732,8 @@ class HumanLikeTrafficBot:
         """Clean up resources"""
         if self.driver:
             self.driver.quit()
-            self.logger.info("Browser closed")
+            self.logger.info("Browser closed. Bot finished.")
+            self._step_log("Bot DONE, browser closed.")
 
 def main():
     """Main function to run the bot(s)"""
@@ -689,14 +787,17 @@ def main():
             successful_bots = [log for log in all_session_logs if log.get('status') != 'failed' and log.get('status') != 'exception']
             failed_bots = [log for log in all_session_logs if log.get('status') == 'failed' or log.get('status') == 'exception']
             
-            print("\n" + "="*60)
-            print("🤖 MULTI-BOT SESSION SUMMARY")
-            print("="*60)
-            print(f"✅ Successful bots: {len(successful_bots)}")
-            print(f"❌ Failed bots: {len(failed_bots)}")
-            print(f"📊 Total URLs processed: {len(successful_bots) * len(urls)}")
-            print(f"💾 Individual bot logs saved in: {LOGS_DIR}/bot_*/")
-            print("="*60)
+            try:
+                from theme import banner, log_line, style
+                print()
+                print(style("  ─── Session finished ───", "\033[96m"))
+                print(log_line("ok", "Bots that finished OK: %s" % len(successful_bots)))
+                print(log_line("err", "Bots that failed: %s" % len(failed_bots)))
+                print(log_line("crawl", "Each bot's log (with IP and country) is in: %s" % (LOGS_DIR + "/bot_*/")))
+            except ImportError:
+                print("\n" + "="*60)
+                print("Session finished. OK: %s | Failed: %s | Logs: %s/bot_*/" % (len(successful_bots), len(failed_bots), LOGS_DIR))
+                print("="*60)
             
         except ImportError as e:
             print(f"ERROR: Could not import BotManager. Running in single bot mode.")

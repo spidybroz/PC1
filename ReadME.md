@@ -28,33 +28,23 @@ SpidyCrawler/
     └── ... (as many as bot_count.txt)
 ```
 
-## 🚀 Quick Start
+## 🚀 Quick Start – One File Does Everything
 
-### Method 1: Automated Setup (Recommended)
+1. **Double-click** `runBot.bat` (or run `python run.py` from the project folder).
+2. The first run will automatically:
+   - Create `Customize/` and default config files (`urls.txt`, `spend_time.txt`, `bot_count.txt`) if missing
+   - Install dependencies (`pip install -r source/requirements.txt`)
+   - Fetch free proxies if `proxies.txt` is empty
+   - Start the bot(s)
 
-1. **Double-click** `runBot.bat`
-2. The script will automatically:
-   - Install Python if missing
-   - Install all required dependencies
-   - Verify your configuration
-   - Launch the traffic bot
+No manual setup. Edit `Customize/urls.txt` (and other files) after the first run if you want to change targets or bot count.
 
-### Method 2: Manual Setup
+### Run on another PC (auto setup, auto config, auto download)
 
-If you prefer manual installation:
-
-1. **Install Python 3.11+** from [python.org](https://python.org)
-2. **Install requirements**:
-
-   ```bash
-   pip install -r source/requirements.txt
-   ```
-
-3. **Run the bot**:
-
-   ```bash
-   python source/SC_BOT.py
-   ```
+1. Copy the whole SpidyCrawler folder to the other PC (or clone the repo).
+2. On that PC install **Python 3.8+** ([python.org](https://python.org)) and **Chrome** (for headless browsing). Add Python to PATH when installing.
+3. Double-click **runBot.bat** (or run `python run.py`).
+4. First run will automatically: upgrade pip, install dependencies (with one retry), pin blinker for selenium-wire, create default config if missing, fetch free proxies if `proxies.txt` is empty, then start the bot(s). No manual pip or config steps needed.
 
 ## ⚙️ Configuration
 
@@ -105,7 +95,15 @@ https://www.anotherexample.com/
 https://www.yoursite.com/
 ```
 
-The updated bot count section now includes the scale testing information and system requirements you provided, making it clear what hardware is needed for each bot count level.
+### 4. Proxies – Different IP/Location Worldwide (Optional, 100% Free)
+
+Traffic can appear from different IPs/locations. Each bot gets a proxy (round-robin). **Production-ready free flow:**
+
+- **Auto (recommended):** Leave `Customize/proxies.txt` missing or empty. On first run, the bot fetches free proxies from public lists and saves them. No signup, no payment.
+- **Manual refresh:** Run `python source/proxy_fetcher.py` to fetch/refresh free proxies. Use `--no-validate` for a faster list (more entries, some may be dead).
+- **Custom:** Create `Customize/proxies.txt` with one proxy per line (`http://ip:port` or `http://user:pass@host:port`, `socks5://…`). Auth is supported via `selenium-wire`.
+- **Cycle:** Fewer proxies than bots → proxies repeat (bot 1 → proxy 1, bot 2 → proxy 2, …).
+- **No proxy:** If fetch fails or you remove the file, bots run without proxy.
 
 ## 🎯 Features
 
@@ -182,6 +180,7 @@ The bot automatically installs:
 - `selenium` - Web browser automation
 - `fake-useragent` - Random user agent generation
 - `urllib3` - URL handling utilities
+- `selenium-wire` - Proxy support (including auth) for different IP/location
 
 ## 🆘 Troubleshooting
 

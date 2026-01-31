@@ -1,3 +1,6 @@
+# blinker must be <1.8 for selenium-wire (1.8+ removed _saferef)
+blinker==1.7.0
 selenium==4.15.0
 fake-useragent==1.4.0
 webdriver-manager==4.0.1
+selenium-wire==5.1.0

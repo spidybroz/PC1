@@ -1,9 +1,11 @@
+# SpidyCrawler – SEO / traffic bot (manual run only)
+# Run from: Actions → SEO Bot Launcher → Run workflow
+# Does NOT run on push or any automatic trigger.
+
 name: SEO Bot Launcher
 
 on:
-  workflow_dispatch:   # Manual run button in GitHub
-  push:
-    branches: [ "main" ]
+  workflow_dispatch:   # Manual only – go to Actions tab and click "Run workflow"
 
 jobs:
   run-seo-bot:
@@ -20,12 +22,12 @@ jobs:
         $OutputEncoding = [console]::InputEncoding = [console]::OutputEncoding = New-Object System.Text.UTF8Encoding
         [System.Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-    - name: Set up Python 3.11
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: "3.11"
 
-    - name: Verify Python installation
+    - name: Verify Python
       shell: pwsh
       run: |
         python --version
@@ -34,52 +36,41 @@ jobs:
     - name: Verify project structure
       shell: pwsh
       run: |
-        $projectRoot = Get-Location
+        $root = Get-Location
+        if (!(Test-Path "$root/run.py")) { throw "run.py not found" }
+        if (!(Test-Path "$root/source/requirements.txt")) { throw "source/requirements.txt not found" }
+        if (!(Test-Path "$root/source/SC_BOT.py")) { throw "source/SC_BOT.py not found" }
+        New-Item -ItemType Directory -Force -Path "$root/Customize" | Out-Null
+        if (!(Test-Path "$root/Customize/urls.txt")) { Set-Content -Path "$root/Customize/urls.txt" -Value "https://example.com/" }
+        if (!(Test-Path "$root/Customize/spend_time.txt")) { Set-Content -Path "$root/Customize/spend_time.txt" -Value "60" }
+        if (!(Test-Path "$root/Customize/bot_count.txt")) { Set-Content -Path "$root/Customize/bot_count.txt" -Value "1" }
+        Write-Host "Project structure OK."
 
-        $requirements = "$projectRoot/source/requirements.txt"
-        $botScript   = "$projectRoot/source/SC_BOT.py"
-        $customize   = "$projectRoot/customize"
-
-        if (!(Test-Path $requirements)) { throw "requirements.txt not found" }
-        if (!(Test-Path $botScript)) { throw "SC_BOT.py not found" }
-        if (!(Test-Path $customize)) { throw "customize folder not found" }
-        if (!(Test-Path "$customize/urls.txt")) { throw "urls.txt not found" }
-        if (!(Test-Path "$customize/spend_time.txt")) { throw "spend_time.txt not found" }
-
-        Write-Host "Project structure verified."
-
-    - name: Install Python dependencies
+    - name: Install dependencies (run.py does this too; pre-install for faster run)
       shell: pwsh
       run: |
-        python -m pip install --upgrade pip
-        pip install -r source/requirements.txt
+        python -m pip install --upgrade pip --quiet
+        pip install -r source/requirements.txt --quiet
+        pip install blinker==1.7.0 --quiet
+        pip install selenium-wire --no-deps --quiet
 
-    - name: Display configuration summary
+    - name: Show config
       shell: pwsh
       run: |
-        Write-Host "URLs found:"
-        Get-Content customize/urls.txt
+        Write-Host "URLs:"
+        Get-Content Customize/urls.txt
+        Write-Host "Stay (sec):"
+        Get-Content Customize/spend_time.txt
+        Write-Host "Bots:"
+        Get-Content Customize/bot_count.txt
 
-        Write-Host "`nVisit duration:"
-        Get-Content customize/spend_time.txt
-
-    - name: Create Logs directory
+    - name: Run SpidyCrawler (run.py = auto setup + bots)
       shell: pwsh
-      run: mkdir Logs -Force
-
-    - name: Run SEO Bot
-      shell: pwsh
+      env:
+        PYTHONUTF8: 1
+        PYTHONIOENCODING: utf-8
       run: |
-        # Set Python to use UTF-8
-        $env:PYTHONUTF8 = "1"
-        $env:PYTHONIOENCODING = "utf-8"
-        
-        # Force UTF-8 encoding for PowerShell
-        $OutputEncoding = [console]::InputEncoding = [console]::OutputEncoding = New-Object System.Text.UTF8Encoding
-        [System.Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        
-        # Run the bot
-        python source/SC_BOT.py
+        python run.py
 
     - name: Upload Logs
       if: always()

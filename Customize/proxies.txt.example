@@ -1,0 +1,17 @@
+# Proxies for different IP/location worldwide (one per line) – 100% FREE
+# Optional: if this file is missing or empty, bots auto-fetch free proxies on first run.
+#
+# === PRODUCTION-READY FREE PROXIES ===
+# 1) Auto: Leave proxies.txt missing or empty – when you run the bot, it fetches
+#    free proxies from public lists and saves them here. No signup, no payment.
+# 2) Manual: Run  python source/proxy_fetcher.py  to fetch/refresh free proxies.
+#    Use  --no-validate  for faster fetch (more proxies, some may be dead).
+# 3) Custom: Copy this file to proxies.txt and add your own lines (one proxy per line).
+#
+# Formats accepted:
+#   http://ip:port
+#   http://user:pass@host:port
+#   socks5://ip:port
+#
+# If you have fewer proxies than bots, they cycle (bot 1 → proxy 1, bot 2 → proxy 2, …).
+# Free proxies can expire; re-run proxy_fetcher.py or clear this file to refresh.
