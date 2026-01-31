@@ -1,0 +1,85 @@
+# SpidyCrawler – SEO / traffic bot (AUTO)
+# Runs every 30 minutes + manual trigger
+# Stop anytime by disabling the workflow in GitHub Actions
+
+name: SpidyCrawler – SEO / traffic bot (AUTO)
+
+on:
+  workflow_dispatch:   # Manual run (optional)
+  schedule:
+    - cron: "*/30 * * * *"   # Every 30 minutes
+
+jobs:
+  run-seo-bot:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set UTF-8 encoding
+      shell: pwsh
+      run: |
+        chcp 65001
+        $OutputEncoding = [console]::InputEncoding = [console]::OutputEncoding = New-Object System.Text.UTF8Encoding
+        [System.Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Verify Python
+      shell: pwsh
+      run: |
+        python --version
+        pip --version
+
+    - name: Verify project structure
+      shell: pwsh
+      run: |
+        $root = Get-Location
+        if (!(Test-Path "$root/run.py")) { throw "run.py not found" }
+        if (!(Test-Path "$root/source/requirements.txt")) { throw "source/requirements.txt not found" }
+        if (!(Test-Path "$root/source/SC_BOT.py")) { throw "source/SC_BOT.py not found" }
+
+        New-Item -ItemType Directory -Force -Path "$root/Customize" | Out-Null
+
+        if (!(Test-Path "$root/Customize/urls.txt")) { Set-Content "$root/Customize/urls.txt" "https://example.com/" }
+        if (!(Test-Path "$root/Customize/spend_time.txt")) { Set-Content "$root/Customize/spend_time.txt" "60" }
+        if (!(Test-Path "$root/Customize/bot_count.txt")) { Set-Content "$root/Customize/bot_count.txt" "1" }
+
+        Write-Host "Project structure OK."
+
+    - name: Install dependencies
+      shell: pwsh
+      run: |
+        python -m pip install --upgrade pip --quiet
+        pip install -r source/requirements.txt --quiet
+        pip install blinker==1.7.0 --quiet
+        pip install selenium-wire --no-deps --quiet
+
+    - name: Show config
+      shell: pwsh
+      run: |
+        Write-Host "URLs:"
+        Get-Content Customize/urls.txt
+        Write-Host "Stay (sec):"
+        Get-Content Customize/spend_time.txt
+        Write-Host "Bots:"
+        Get-Content Customize/bot_count.txt
+
+    - name: Run SpidyCrawler (AUTO SEO)
+      shell: pwsh
+      env:
+        PYTHONUTF8: 1
+        PYTHONIOENCODING: utf-8
+      run: |
+        python run.py
+
+    - name: Upload Logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: seo-bot-logs
+        path: Logs
