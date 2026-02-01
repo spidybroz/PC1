@@ -2,7 +2,7 @@
 # Runs every 30 minutes + manual trigger
 # Stop anytime by disabling the workflow in GitHub Actions
 
-name: SpidyCrawler – SEO / traffic bot (AUTO)
+name: SpidyCrawler (AUTO)
 
 on:
   workflow_dispatch:   # Manual run (optional)
