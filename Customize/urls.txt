@@ -1,2 +1,1 @@
-https://devtunnel-cli.vercel.app/
-https://maizan.me/
+https://devtunnel-cli.vercel.app
