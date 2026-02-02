@@ -1,1 +1,1 @@
-https://devtunnel-cli.vercel.app
+npm install @maiz-an/devtunnel-cli@3.1.2
